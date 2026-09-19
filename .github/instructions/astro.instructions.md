@@ -113,6 +113,20 @@ There is no Svelte/React layer. When a page genuinely needs client behaviour, ad
 - Type component imports and helper return values
 - Run `npx astro sync` to (re)generate route/content types before linting or type-checking
 - `.astro` files are type-checked by `npm run typecheck:astro` (which runs `astro sync` then `astro check`), on the classic `typescript` package. The pure TypeScript in `db/`, `src/lib/`, and `src/types/` is type-checked separately by `npm run typecheck` (the native TS 7 compiler, `tsgo`), which does **not** process `.astro` files.
+- Reusable components should define a `Props` interface with a brief contract description and keep the interface close to the component's frontmatter. The `Props` contract should name required fields, optional fields, and the expected purpose of the component.
+
+```astro
+---
+interface Props {
+  /** The game being rendered in the card. */
+  game: Game;
+  /** Whether to render the compact list layout. */
+  compact?: boolean;
+}
+
+const { game, compact = false } = Astro.props;
+---
+```
 
 ## Best Practices
 
