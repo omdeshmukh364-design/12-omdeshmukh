@@ -7,9 +7,21 @@ import { getAllCategories, getAllGames, getAllPublishers } from '../lib/games';
 
 export const prerender = true;
 
+const selectedCategoryIds = Astro.url.searchParams
+    .getAll('category')
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0);
+const selectedPublisherIds = Astro.url.searchParams
+    .getAll('publisher')
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0);
 const categories = await getAllCategories(getDatabase());
 const publishers = await getAllPublishers(getDatabase());
-const games = await getAllGames(getDatabase());
+const games = await getAllGames(getDatabase(), {
+    categoryIds: selectedCategoryIds.length > 0 ? selectedCategoryIds : undefined,
+    publisherIds: selectedPublisherIds.length > 0 ? selectedPublisherIds : undefined,
+});
+const hasActiveFilters = selectedCategoryIds.length > 0 || selectedPublisherIds.length > 0;
 ---
 
 <Layout title="Tailspin Toys - Crowdfunding your new favorite game!">
@@ -20,7 +32,7 @@ const games = await getAllGames(getDatabase());
     />
 
     <div class="mb-8 rounded-xl border border-slate-700 bg-slate-800/80 p-4 shadow-lg" data-testid="games-filter-panel">
-      <form class="space-y-4" data-testid="games-filter-form">
+      <form method="get" action="/" class="space-y-4" data-testid="games-filter-form">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <fieldset class="flex-1" data-testid="category-filter-group">
             <legend class="mb-2 text-sm font-medium text-slate-200">Categories</legend>
@@ -34,6 +46,7 @@ const games = await getAllGames(getDatabase());
                     type="checkbox"
                     name="category"
                     value={String(category.id)}
+                    checked={selectedCategoryIds.includes(category.id)}
                     class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     data-testid={`filter-category-${category.id}`}
                   />
@@ -55,6 +68,7 @@ const games = await getAllGames(getDatabase());
                     type="checkbox"
                     name="publisher"
                     value={String(publisher.id)}
+                    checked={selectedPublisherIds.includes(publisher.id)}
                     class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
                     data-testid={`filter-publisher-${publisher.id}`}
                   />
@@ -72,13 +86,13 @@ const games = await getAllGames(getDatabase());
             >
               Apply filters
             </button>
-            <button
-              type="button"
-              class="text-sm text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            <a
+              href="/"
+              class:list={['text-sm text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline focus:ring-2 focus:ring-blue-500 focus:outline-none', { hidden: !hasActiveFilters }]}
               data-testid="clear-filters-link"
             >
               Clear filters
-            </button>
+            </a>
           </div>
         </div>
       </form>
@@ -87,11 +101,15 @@ const games = await getAllGames(getDatabase());
     <div>
       <h2 class="text-2xl font-medium mb-6 text-slate-100">Featured Games</h2>
 
-      <div class="hidden mb-6 rounded-xl border border-slate-700 bg-slate-800/80 p-6 text-slate-200" data-testid="games-empty-state">
-        <p>No games match your current filters.</p>
+      <div
+        class="mb-6 rounded-xl border border-slate-700 bg-slate-800/80 p-6 text-slate-200"
+        data-testid="games-empty-state"
+        hidden={games.length > 0 && !hasActiveFilters}
+      >
+        <p>{hasActiveFilters ? 'No games match your current filters.' : 'No games available at the moment.'}</p>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="games-grid">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="games-grid" hidden={games.length === 0 && !hasActiveFilters}>
         {games.map((game) => <GameCard game={game} />)}
       </div>
     </div>
@@ -99,52 +117,63 @@ const games = await getAllGames(getDatabase());
 </Layout>
 
 <script>
-  const form = document.querySelector<HTMLFormElement>('[data-testid="games-filter-form"]');
-  const clearButton = document.querySelector<HTMLButtonElement>('[data-testid="clear-filters-link"]');
-  const emptyState = document.querySelector<HTMLElement>('[data-testid="games-empty-state"]');
-  const grid = document.querySelector<HTMLElement>('[data-testid="games-grid"]');
-  const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="game-card"]'));
+  const syncFilterState = () => {
+    const params = new URLSearchParams(window.location.search);
+    const selectedCategories = new Set(
+      params
+        .getAll('category')
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0),
+    );
+    const selectedPublishers = new Set(
+      params
+        .getAll('publisher')
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0),
+    );
 
-  const selectedValues = (name: string): number[] =>
-    Array.from(document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"][name="${name}"]:checked`)).map((input) => Number(input.value));
-
-  const applyFilters = () => {
-    const selectedCategories = selectedValues('category');
-    const selectedPublishers = selectedValues('publisher');
-    let visibleCount = 0;
-
-    cards.forEach((card) => {
-      const cardCategoryId = Number(card.dataset.gameCategoryId || '0');
-      const cardPublisherId = Number(card.dataset.gamePublisherId || '0');
-      const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(cardCategoryId);
-      const matchesPublisher = selectedPublishers.length === 0 || selectedPublishers.includes(cardPublisherId);
-      const isVisible = matchesCategory && matchesPublisher;
-      card.style.display = isVisible ? '' : 'none';
-      if (isVisible) {
-        visibleCount += 1;
-      }
+    document.querySelectorAll<HTMLInputElement>('input[type="checkbox"][name="category"]').forEach((input) => {
+      input.checked = selectedCategories.has(Number(input.value));
+    });
+    document.querySelectorAll<HTMLInputElement>('input[type="checkbox"][name="publisher"]').forEach((input) => {
+      input.checked = selectedPublishers.has(Number(input.value));
     });
 
-    if (grid) {
-      grid.classList.toggle('hidden', visibleCount === 0);
+    const clearFiltersLink = document.querySelector<HTMLElement>('[data-testid="clear-filters-link"]');
+    const hasActiveFilters = selectedCategories.size > 0 || selectedPublishers.size > 0;
+    if (clearFiltersLink) {
+      clearFiltersLink.classList.toggle('hidden', !hasActiveFilters);
+      clearFiltersLink.hidden = !hasActiveFilters;
+    }
+
+    const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="game-card"]'));
+    const gamesGrid = document.querySelector<HTMLElement>('[data-testid="games-grid"]');
+    const emptyState = document.querySelector<HTMLElement>('[data-testid="games-empty-state"]');
+
+    cards.forEach((card) => {
+      const categoryId = Number(card.getAttribute('data-game-category-id'));
+      const publisherId = Number(card.getAttribute('data-game-publisher-id'));
+      const matchesCategories = selectedCategories.size === 0 || selectedCategories.has(categoryId);
+      const matchesPublishers = selectedPublishers.size === 0 || selectedPublishers.has(publisherId);
+      const isVisible = matchesCategories && matchesPublishers;
+      card.hidden = !isVisible;
+    });
+
+    const visibleCards = cards.filter((card) => !card.hidden);
+    if (gamesGrid) {
+      gamesGrid.hidden = hasActiveFilters && visibleCards.length === 0;
     }
 
     if (emptyState) {
-      emptyState.classList.toggle('hidden', visibleCount !== 0);
+      const noMatches = hasActiveFilters && visibleCards.length === 0;
+      emptyState.hidden = !noMatches;
+      const message = emptyState.querySelector('p');
+      if (message && hasActiveFilters) {
+        message.textContent = 'No games match your current filters.';
+      }
     }
   };
 
-  form?.addEventListener('submit', (event) => {
-    event.preventDefault();
-    applyFilters();
-  });
-
-  clearButton?.addEventListener('click', () => {
-    document.querySelectorAll<HTMLInputElement>('input[type="checkbox"][name="category"], input[type="checkbox"][name="publisher"]').forEach((input) => {
-      input.checked = false;
-    });
-    applyFilters();
-  });
-
-  applyFilters();
+  document.addEventListener('DOMContentLoaded', syncFilterState);
+  window.addEventListener('pageshow', syncFilterState);
 </script>
