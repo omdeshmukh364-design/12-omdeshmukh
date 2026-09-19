@@ -24,6 +24,38 @@ test.describe('Game Listing and Navigation', () => {
     });
   });
 
+  test('should filter the games list by category and publisher', async ({ page }) => {
+    await test.step('Navigate to homepage and open the filter panel', async () => {
+      await page.goto('/');
+      await expect(page.getByTestId('games-filter-form')).toBeVisible();
+    });
+
+    await test.step('Apply category and publisher filters', async () => {
+      await page.getByTestId('filter-category-1').check();
+      await page.getByTestId('filter-publisher-1').check();
+      await page.getByTestId('apply-filters-button').click();
+    });
+
+    await test.step('Verify the filtered list reflects the selected filters', async () => {
+      const filteredCards = page.locator('[data-testid="game-card"]:visible');
+      await expect(page.getByTestId('filter-category-1')).toBeChecked();
+      await expect(page.getByTestId('filter-publisher-1')).toBeChecked();
+      await expect(filteredCards.first()).toBeVisible();
+      expect(await filteredCards.count()).toBeGreaterThan(0);
+
+      for (let i = 0; i < (await filteredCards.count()); i++) {
+        await expect(filteredCards.nth(i)).toContainText('Strategy');
+        await expect(filteredCards.nth(i)).toContainText('CodeForge Studios');
+      }
+    });
+
+    await test.step('Clear the active filters', async () => {
+      await page.getByTestId('clear-filters-link').click();
+      await expect(page.getByTestId('filter-category-1')).not.toBeChecked();
+      await expect(page.getByTestId('filter-publisher-1')).not.toBeChecked();
+    });
+  });
+
   test('should navigate to correct game details page when clicking on a game', async ({ page }) => {
     let gameId: string | null;
     let gameTitle: string | null;
